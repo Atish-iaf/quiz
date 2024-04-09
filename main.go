@@ -6,6 +6,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
+)
+
+const (
+	defaultTimeLimit = 10
+	defaultFilePath  = "questionAnswers.csv"
 )
 
 type questionAnswer struct {
@@ -14,7 +20,8 @@ type questionAnswer struct {
 }
 
 func main() {
-	filePath := flag.String("file", "questions.csv", "path of file which contains questions and answers.")
+	filePath := flag.String("file", defaultFilePath, "path of file which contains questions and answers.")
+	timeLimit := flag.Int("timeLimit", defaultTimeLimit, "optional, time limit in seconds for the quiz. Default is 10s")
 	flag.Parse()
 
 	file, err := os.Open(*filePath)
@@ -30,9 +37,12 @@ func main() {
 	}
 
 	questionAnswers := getQuestionAnswers(lines)
+	timer := time.NewTimer(time.Second * time.Duration(*timeLimit))
 
-	correctAnswerCount := play(questionAnswers)
-
+	timeUp, correctAnswerCount := play(questionAnswers, timer)
+	if timeUp {
+		fmt.Println("Time up!")
+	}
 	fmt.Printf("You scored %d out of %d\n", correctAnswerCount, len(questionAnswers))
 }
 
@@ -47,15 +57,26 @@ func getQuestionAnswers(lines [][]string) []questionAnswer {
 	return questions
 }
 
-func play(questions []questionAnswer) int {
+func play(questionAnswers []questionAnswer, timer *time.Timer) (timeUp bool, correct int) {
 	correctAnswerCount := 0
-	for quesNum, ques := range questions {
-		fmt.Printf("%d. %s \n", quesNum+1, ques.question)
-		var userAnswer string
-		fmt.Scanf("%s", &userAnswer)
-		if userAnswer == ques.answer {
-			correctAnswerCount++
+	answerCh := make(chan string)
+	for quesNum, questionAnswer := range questionAnswers {
+		go getAnswer(quesNum+1, questionAnswer.question, answerCh)
+		select {
+		case <-timer.C:
+			return true, correctAnswerCount
+		case userAnswer := <-answerCh:
+			if userAnswer == questionAnswer.answer {
+				correctAnswerCount++
+			}
 		}
 	}
-	return correctAnswerCount
+	return false, correctAnswerCount
+}
+
+func getAnswer(quesNum int, question string, answerCh chan string) {
+	fmt.Printf("%d. %s \n", quesNum, question)
+	var userAnswer string
+	fmt.Scanf("%s", &userAnswer)
+	answerCh <- userAnswer
 }
