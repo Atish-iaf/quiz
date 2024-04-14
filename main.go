@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
 )
 
 const (
-	defaultTimeLimit = 10
+	defaultTimeLimit = 30
 	defaultFilePath  = "questionAnswers.csv"
 )
 
@@ -21,7 +23,7 @@ type questionAnswer struct {
 
 func main() {
 	filePath := flag.String("file", defaultFilePath, "path of file which contains questions and answers.")
-	timeLimit := flag.Int("timeLimit", defaultTimeLimit, "optional, time limit in seconds for the quiz. Default is 10s")
+	timeLimit := flag.Int("timeLimit", defaultTimeLimit, "optional, time limit in seconds for the quiz. Default is 30s")
 	flag.Parse()
 
 	file, err := os.Open(*filePath)
@@ -37,6 +39,11 @@ func main() {
 	}
 
 	questionAnswers := getQuestionAnswers(lines)
+	rand.New(rand.NewSource(time.Now().Unix()))
+	rand.Shuffle(len(questionAnswers), func(i, j int) {
+		questionAnswers[i], questionAnswers[j] = questionAnswers[j], questionAnswers[i]
+	})
+
 	timer := time.NewTimer(time.Second * time.Duration(*timeLimit))
 
 	timeUp, correctAnswerCount := play(questionAnswers, timer)
@@ -51,7 +58,7 @@ func getQuestionAnswers(lines [][]string) []questionAnswer {
 	for _, line := range lines {
 		questions = append(questions, questionAnswer{
 			question: line[0],
-			answer:   strings.TrimSpace(line[1]),
+			answer:   strings.ToLower(strings.TrimSpace(line[1])),
 		})
 	}
 	return questions
@@ -61,7 +68,8 @@ func play(questionAnswers []questionAnswer, timer *time.Timer) (timeUp bool, cor
 	correctAnswerCount := 0
 	answerCh := make(chan string)
 	for quesNum, questionAnswer := range questionAnswers {
-		go getAnswer(quesNum+1, questionAnswer.question, answerCh)
+		fmt.Printf("%d. %s \n", quesNum+1, questionAnswer.question)
+		go getAnswer(answerCh)
 		select {
 		case <-timer.C:
 			return true, correctAnswerCount
@@ -74,9 +82,11 @@ func play(questionAnswers []questionAnswer, timer *time.Timer) (timeUp bool, cor
 	return false, correctAnswerCount
 }
 
-func getAnswer(quesNum int, question string, answerCh chan string) {
-	fmt.Printf("%d. %s \n", quesNum, question)
-	var userAnswer string
-	fmt.Scanf("%s", &userAnswer)
+func getAnswer(answerCh chan string) {
+	reader := bufio.NewReader(os.Stdin)
+	userAnswer, _ := reader.ReadString('\n')
+	userAnswer = strings.Trim(userAnswer, " ")
+	userAnswer = strings.Trim(userAnswer, "\n")
+	userAnswer = strings.ToLower(userAnswer)
 	answerCh <- userAnswer
 }
